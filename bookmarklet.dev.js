@@ -229,10 +229,19 @@ function start(){
 	// Get athlete ID from the current page's already-rendered DOM instead of the AJAX response,
 	// because the server may return different HTML for XHR requests (omitting inline scripts).
 	var myId = null;
-	var navEl = document.querySelector('a.nav-link.accessible-nav-link');
-	if(navEl){
-		var navMatch = navEl.getAttribute('href').match(/\/athletes\/(\d+)/);
-		if(navMatch) myId = navMatch[1];
+	// Strava's 2026 header no longer uses "a.nav-link.accessible-nav-link",
+	// so try several selectors, starting with the links to your own follows lists.
+	var idSelectors = [
+		'a[href*="/follows?type=following"]',
+		'a[href*="/follows?type=followers"]',
+		'a.nav-link.accessible-nav-link'
+	];
+	for(var s=0;s<idSelectors.length&&!myId;s++){
+		var navEl = document.querySelector(idSelectors[s]);
+		if(navEl){
+			var navMatch = (navEl.getAttribute('href')||'').match(/\/athletes\/(\d+)/);
+			if(navMatch) myId = navMatch[1];
+		}
 	}
 	if(!myId){
 		// Fallback: search script content in the current page
@@ -246,7 +255,13 @@ function start(){
 	}
 	// Fetch the dashboard only to obtain followingCount and followersCount for the progress bar
 	$.ajax({url:io.dashboard,dataType:'html'}).done(function(data){
-		var props=JSON.parse($(data).find('div.dashboard-mfe').eq(0).attr('data-react-props'));
+		// The dashboard no longer has "div.dashboard-mfe"; read the counts from the embedded page data instead.
+		// The counts only drive the progress bar, so 0 is a safe fallback.
+		var readCount = function(key){
+			var m = String(data).match(new RegExp(key + '\\\\?"?\\s*:\\s*(\\d+)'));
+			return m ? Number(m[1]) : 0;
+		};
+		var props = {"appContext":{"followingCount":readCount('followingCount'),"followersCount":readCount('followersCount')}};
 		var countObj = {
 			"following":{
 				"count":props.appContext.followingCount,
@@ -288,7 +303,7 @@ function getList(DYNAMIC){
 				}else{
 					DYNAMIC.following.complete = true;
 				}
-				var percentile = Math.floor(100 * (DYNAMIC.following.list.length/DYNAMIC.following.count));
+				var percentile = (DYNAMIC.following.count ? Math.min(100, Math.floor(100 * (DYNAMIC.following.list.length/DYNAMIC.following.count))) : 0);
 				$('#blinking_text_xyz').text(strings[lang].analyzingFollowing);
 				$('#progressbar_inner_b_xyz').text(percentile+'%').stop(true,true).animate({'width':percentile+'%'});
 				getList(DYNAMIC);
@@ -309,7 +324,7 @@ function getList(DYNAMIC){
 				}else{
 					DYNAMIC.followers.complete = true;
 				}
-				var percentile = Math.floor(100 * (DYNAMIC.followers.list.length/DYNAMIC.followers.count));
+				var percentile = (DYNAMIC.followers.count ? Math.min(100, Math.floor(100 * (DYNAMIC.followers.list.length/DYNAMIC.followers.count))) : 0);
 				$('#blinking_text_xyz').text(strings[lang].analyzingFollowers);
 				$('#progressbar_inner_b_xyz').text(percentile+'%').stop(true,true).animate({'width':percentile+'%'});
 				getList(DYNAMIC);
